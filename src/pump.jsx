@@ -469,7 +469,6 @@ export default function TankPumpPanel({
         opacity="0.9"
         style={{ fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1, "lnum" 1' }}
       >
-        {Math.round(pct)}%
       </text>
 
       <text x={tank.x + tank.w / 2} y={tank.y + tank.h + 22} textAnchor="middle" fontSize="13" fill="#64748b">
