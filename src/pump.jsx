@@ -525,7 +525,7 @@ export default function TankPumpPanel({
               <div>
                 <div style={styles.meterLabel}>Current Level</div>
                 <div style={styles.meterRead}>{litersText}</div>
-                <div style={styles.meterPct}>{pct.toFixed(1)}% of capacity</div>
+                {/* <div style={styles.meterPct}>{pct.toFixed(1)}% of capacity</div> */}
               </div>
               
 
