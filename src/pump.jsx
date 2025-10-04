@@ -8,6 +8,7 @@ import {
   LegendComponent,
   DataZoomComponent,
   MarkAreaComponent,
+  MarkLineComponent,   // ✅ for threshold lines
   ToolboxComponent,
   GraphicComponent
 } from 'echarts/components';
@@ -21,16 +22,18 @@ echarts.use([
   LegendComponent,
   DataZoomComponent,
   MarkAreaComponent,
+  MarkLineComponent,
   ToolboxComponent,
   GraphicComponent,
   CanvasRenderer
 ]);
 
 /**
- * TankPumpPanel — responsive pump ➜ single pipe ➜ rectangular tank + dual-axis chart
- * - Pump has LED: green (ON) / red (OFF)
- * - Single connected pipe path with rounded elbow; animated flow when ON
- * - Rectangular tank
+ * TankPumpPanel — pump ➜ single pipe (touches tank) ➜ rectangular tank + dual-axis chart
+ * - Straight pipe (vertical → horizontal → vertical), stops right before tank wall
+ * - Pump LED (green ON / red OFF)
+ * - Tank ruler ticks + floating % near surface
+ * - Chart: level + motor state, optional ON/OFF bands, threshold lines
  */
 export default function TankPumpPanel({
   capacity = 2000,
@@ -42,8 +45,12 @@ export default function TankPumpPanel({
   history = [],
   height = 680,
   theme = 'light',
-  showBands = false,     // shaded ON/OFF bands (off by default)
-  pumpImage = '/pump.png' // or '/pump.png'
+  showBands = false,
+  pumpImage = '/pump.png',
+  // Enhancements
+  lowLevelPct = 20,      // badge at/under this %
+  highLevelPct = 95,     // badge at/over this %
+  showThresholds = true  // dashed threshold lines on chart
 }) {
   // Responsive breakpoint
   const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 1100);
@@ -53,15 +60,15 @@ export default function TankPumpPanel({
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Internal state (demo mode)
+  // Demo/uncontrolled state
   const [uncontrolled, setUncontrolled] = useState({
     level: level ?? Math.round(capacity * 0.45),
     motorOn: motorOn ?? false,
   });
 
-  // Local demo flows (only used when uncontrolled)
-  const [localFlowIn, setLocalFlowIn] = useState(flowInLpm);
-  const [localOutflow, setLocalOutflow] = useState(outflowLpm);
+  // Local demo flows (used only when uncontrolled; UI removed)
+  const [localFlowIn] = useState(flowInLpm);
+  const [localOutflow] = useState(outflowLpm);
 
   const isControlled = level !== undefined && motorOn !== undefined;
   const curr = {
@@ -125,6 +132,10 @@ export default function TankPumpPanel({
   const pct = useMemo(() => (capacity ? (curr.level / capacity) * 100 : 0), [curr.level, capacity]);
   const litersText = useMemo(() => `${Math.round(curr.level).toLocaleString()} L`, [curr.level]);
 
+  // Thresholds (absolute L)
+  const lowAbs = (lowLevelPct / 100) * capacity;
+  const highAbs = (highLevelPct / 100) * capacity;
+
   // ===== Chart =====
   const chartOption = useMemo(() => {
     const levelData = seriesData.map((d) => [d.ts, d.level]);
@@ -180,10 +191,7 @@ export default function TankPumpPanel({
       },
       yAxis: [
         { type: 'value', name: 'Water Level (L)', min: 0, max: capacity, splitNumber: 5 },
-        {
-          type: 'value', name: '', min: 0, max: 1, interval: 1,
-          axisLabel: { formatter: () => '' }, splitLine: { show: false }
-        }
+        { type: 'value', name: '', min: 0, max: 1, interval: 1, axisLabel: { formatter: () => '' }, splitLine: { show: false } }
       ],
       dataZoom: [
         { type: 'inside', throttle: 50 },
@@ -204,7 +212,10 @@ export default function TankPumpPanel({
           },
           lineStyle: { width: 2 },
           data: levelData,
-          ...(showBands ? { markArea: { silent: true, data: spans } } : {})
+          ...(showBands ? { markArea: { silent: true, data: spans } } : {}),
+          ...(showThresholds ? {
+            
+          } : {})
         },
         {
           name: 'Motor',
@@ -230,9 +241,9 @@ export default function TankPumpPanel({
         right: 12,
       },
     };
-  }, [seriesData, capacity, theme, showBands]);
+  }, [seriesData, capacity, theme, showBands, showThresholds, lowAbs, highAbs]);
 
-  // ===== Styles (responsive + overflow-safe) =====
+  // ===== Styles =====
   const styles = useMemo(() => ({
     wrapper: {
       display: 'grid',
@@ -306,32 +317,46 @@ export default function TankPumpPanel({
     meterPct: { fontSize: 13, color: '#6b7280', marginTop: 2 },
   }), [height, isNarrow]);
 
-  // ===== SVG Diagram (single connected pipe + rectangular tank) =====
-const Diagram = () => {
-  // --- Layout tuned for any screen via viewBox ---
-  const pump = { x: 70, y: 110, w: 200, h: 140 };      // pump image box
-  const led  = { r: 14, x: pump.x + 22, y: pump.y + 22 }; // LED at top-left of pump
-  const pipeW = 18;                                     // pipe thickness
+  // ===== SVG Diagram (pipe *touches* tank, not overlapping) =====
+  const Diagram = () => {
+  // Pump image box
+  const pump = { x: 70, y: 110, w: 220, h: 150 };
 
-  // Outlet point (right-middle of pump); tweak yFactor if your icon's nozzle sits higher/lower
-  const outlet = { x: pump.x + pump.w - 6, y: pump.y + pump.h * 0.54 };
+  // Nozzle inside image (fractional)
+  const NOZZLE_XF = 0.14 // left/right
+  const NOZZLE_YF = 0.1; // top/down
+
+  const outletTop = {
+    x: pump.x + pump.w * NOZZLE_XF,
+    y: pump.y + pump.h * NOZZLE_YF,
+  };
+
+  // LED (top-right)
+  const led = { r: 10, x: pump.x + pump.w - 30, y: pump.y + 14 };
+
+  const pipeW = 18;
 
   // Rectangular tank
-  const tank =  { x: 720, y: 55, w: 220, h: 250 };
+  const tank = { x: 740, y: 55, w: 265, h: 250 };
   const inner = { x: tank.x + 6, y: tank.y + 6, w: tank.w - 12, h: tank.h - 12 };
 
   // Water level
   const waterH = Math.max(0, Math.min(inner.h, (pct / 100) * inner.h));
   const waterY = inner.y + (inner.h - waterH);
 
-  // Single continuous pipe path: outlet -> near tank -> up elbow -> into tank lip
-  const elbowX   = tank.x - 44;             // where the elbow starts curving up
-  const inletY   = inner.y + 2;             // top inside of tank (lip)
+  // Straight pipe: vertical riser → horizontal → vertical down (touch tank)
+  const riserY = outletTop.y -70; // Adjust this value if needed
+  const tankGap = 11; // Increase to shorten the horizontal run near the tank
+  const touchX = tank.x - tankGap;
+  const startX = outletTop.x + 34; // aligns with outlet visually
+  const startY = outletTop.y-6;
+  const inletY = inner.y+3; // Ensure this is above the inner lip of the tank
+
   const pipePath = `
-    M ${outlet.x} ${outlet.y}
-    H ${elbowX}
-    Q ${tank.x} ${outlet.y} ${tank.x} ${inletY}
-    H ${inner.x + 10}
+    M ${startX} ${startY}
+    V ${riserY}
+    H ${touchX}
+    V ${inletY}
   `;
 
   return (
@@ -351,49 +376,16 @@ const Diagram = () => {
           <stop offset="0%" stopColor="#60a5fa" />
           <stop offset="100%" stopColor="#3b82f6" />
         </linearGradient>
-
-        {/* dashed stroke animation for flow */}
         <style>{`@keyframes dashflow { to { stroke-dashoffset: -220; } }`}</style>
-
-        {/* clip the pump image to a rounded white backplate */}
         <clipPath id="pumpClip">
           <rect x={pump.x} y={pump.y} width={pump.w} height={pump.h} rx="14" ry="14" />
         </clipPath>
-
-        {/* clip for tank inner cavity */}
         <clipPath id="tankClip">
           <rect x={inner.x} y={inner.y} width={inner.w} height={inner.h} rx="6" ry="6" />
         </clipPath>
       </defs>
 
-      {/* ===== PIPE (one continuous path) ===== */}
-      <path
-        d={pipePath}
-        fill="none"
-        stroke="#94a3b8"
-        strokeOpacity="0.65"
-        strokeWidth={pipeW}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* hide any tiny seam at the outlet */}
-      <circle cx={outlet.x} cy={outlet.y} r={pipeW / 2} fill="#94a3b8" opacity="0.65" />
-
-      {/* animated flow overlay when motor is ON */}
-      {curr.motorOn && (
-        <path
-          d={pipePath}
-          fill="none"
-          stroke="#60a5fa"
-          strokeWidth={Math.max(8, pipeW - 10)}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{ strokeDasharray: '26 18', animation: 'dashflow 1.1s linear infinite' }}
-        />
-      )}
-
-      {/* ===== PUMP with LED ===== */}
-      {/* white backplate to kill checkerboard artifacts */}
+      {/* PUMP first */}
       <rect x={pump.x} y={pump.y} width={pump.w} height={pump.h} rx="14" fill="#fff" />
       {pumpImage ? (
         <image
@@ -409,7 +401,82 @@ const Diagram = () => {
         <rect x={pump.x} y={pump.y} width={pump.w} height={pump.h} rx="14" fill="url(#steel)" opacity="0.7" />
       )}
 
-      {/* LED: green ON, red OFF (pulses softly when ON) */}
+      {/* PIPE (touching tank) */}
+      <path
+        d={pipePath}
+        fill="none"
+        stroke="#94a3b8"
+        strokeOpacity="0.65"
+        strokeWidth={pipeW}
+        strokeLinecap="miter"
+        strokeLinejoin="miter"
+      />
+      {curr.motorOn && (
+        <path
+          d={pipePath}
+          fill="none"
+          stroke="#60a5fa"
+          strokeWidth={Math.max(8, pipeW - 10)}
+          strokeLinecap="miter"
+          strokeLinejoin="miter"
+          style={{ strokeDasharray: '26 18', animation: 'dashflow 1.1s linear infinite' }}
+        />
+      )}
+
+      {/* TANK */}
+      <rect x={tank.x} y={tank.y} width={tank.w} height={tank.h} rx="6" fill="url(#steel)" opacity="0.35" />
+      <rect x={inner.x} y={inner.y} width={inner.w} height={inner.h} rx="6" fill="#f1f5f9" stroke="#e2e8f0" />
+
+      {/* Water + surface line */}
+      <g clipPath="url(#tankClip)">
+        <rect x={inner.x} y={waterY} width={inner.w} height={waterH} fill="url(#water)" />
+        {waterH > 6 && (
+          <path d={`M ${inner.x + 10} ${waterY + 6} H ${inner.x + inner.w - 10}`} stroke="rgba(255,255,255,0.9)" strokeWidth="2" />
+        )}
+      </g>
+
+      {/* Ruler ticks + 0/50/100 labels */}
+      <g>
+        {Array.from({ length: 11 }).map((_, i) => {
+          const y = inner.y + inner.h - (inner.h * (i / 10));
+          const len = i % 5 === 0 ? 10 : 6;
+          const op = i % 5 === 0 ? 0.35 : 0.22;
+          return (
+            <line
+              key={i}
+              x1={tank.x + tank.w - 3}
+              y1={y}
+              x2={tank.x + tank.w - 3 + len}
+              y2={y}
+              stroke="#64748b"
+              strokeOpacity={op}
+              strokeWidth="1"
+            />
+          );
+        })}
+        <text x={tank.x + tank.w + 14} y={inner.y + inner.h + 4} fontSize="10" fill="#64748b">0%</text>
+        <text x={tank.x + tank.w + 14} y={inner.y + inner.h / 2 + 3} fontSize="10" fill="#64748b">50%</text>
+        <text x={tank.x + tank.w + 14} y={inner.y + 4} fontSize="10" fill="#64748b">100%</text>
+      </g>
+
+      {/* Floating % near water surface */}
+      <text
+        x={inner.x + inner.w - 8}
+        y={Math.max(inner.y + 14, waterY - 6)}
+        textAnchor="end"
+        fontSize="11"
+        fill="#475569"
+        opacity="0.9"
+        style={{ fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1, "lnum" 1' }}
+      >
+        {Math.round(pct)}%
+      </text>
+
+      <text x={tank.x + tank.w / 2} y={tank.y + tank.h + 22} textAnchor="middle" fontSize="13" fill="#64748b">
+        Water Tank
+      </text>
+
+      {/* LED last */}
       <circle
         cx={led.x}
         cy={led.y}
@@ -432,23 +499,9 @@ const Diagram = () => {
           <animate attributeName="stroke-opacity" values="0.55;0.15;0.55" dur="1.4s" repeatCount="indefinite" />
         </circle>
       )}
-
-      {/* ===== RECTANGULAR TANK ===== */}
-      <rect x={tank.x} y={tank.y} width={tank.w} height={tank.h} rx="6" fill="url(#steel)" opacity="0.35" />
-      <rect x={inner.x} y={inner.y} width={inner.w} height={inner.h} rx="6" fill="#f1f5f9" stroke="#e2e8f0" />
-      <g clipPath="url(#tankClip)">
-        <rect x={inner.x} y={waterY} width={inner.w} height={waterH} fill="url(#water)" />
-        {waterH > 6 && (
-          <path d={`M ${inner.x + 10} ${waterY + 6} H ${inner.x + inner.w - 10}`} stroke="rgba(255,255,255,0.9)" strokeWidth="2" />
-        )}
-      </g>
-      <text x={tank.x + tank.w / 2} y={tank.y + tank.h + 22} textAnchor="middle" fontSize="13" fill="#64748b">
-        Water Tank
-      </text>
     </svg>
   );
 };
-
   return (
     <div style={styles.wrapper}>
       <div style={styles.top}>
@@ -458,58 +511,78 @@ const Diagram = () => {
             <button onClick={handleToggle} style={styles.toggleBtn(curr.motorOn)}>
               {curr.motorOn ? 'Turn OFF (M)' : 'Turn ON (M)'}
             </button>
-            <div style={styles.stat}>
-              Level: <b>{litersText}</b> • {pct.toFixed(1)}% of {capacity.toLocaleString()} L
-            </div>
           </div>
         </div>
 
-        {/* Diagram + meters (responsive, no overlap) */}
+        {/* Diagram + meters */}
         <div style={styles.bigStage}>
           <div style={styles.diagramFrame}>
             <Diagram />
           </div>
 
           <div style={styles.meterCard}>
-            <div style={{ display: 'grid', gap: 10 }}>
+            <div style={{ display: 'grid', gap: 12, marginTop:'50px' }}>
               <div>
                 <div style={styles.meterLabel}>Current Level</div>
                 <div style={styles.meterRead}>{litersText}</div>
                 <div style={styles.meterPct}>{pct.toFixed(1)}% of capacity</div>
               </div>
+              
 
-              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 6 }}>Motor Status</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <div style={{ width: 10, height: 10, borderRadius: 999, background: curr.motorOn ? '#10b981' : '#ef4444' }} />
-                <div style={{ fontWeight: 700, color: curr.motorOn ? '#065f46' : '#7f1d1d' }}>
-                  {curr.motorOn ? 'ON' : 'OFF'}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                {pct <= lowLevelPct && (
+                  <span style={{
+                    fontSize: 12, fontWeight: 700, padding: '4px 8px', borderRadius: 999,
+                    background: 'rgba(239,68,68,0.12)', color: '#991b1b',
+                    border: '1px solid rgba(239,68,68,0.35)'
+                  }}>
+                    LOW LEVEL
+                  </span>
+                )}
+                {pct >= highLevelPct && (
+                  <span style={{
+                    fontSize: 12, fontWeight: 700, padding: '4px 8px', borderRadius: 999,
+                    background: 'rgba(34,197,94,0.12)', color: '#065f46',
+                    border: '1px solid rgba(34,197,94,0.35)'
+                  }}>
+                    NEAR FULL
+                  </span>
+                )}
+              </div>
+
+              {/* Sump stats (labels left, values right) */}
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8, marginBottom: 2 }}>Sump</div>
+              <div style={{ display: 'grid', rowGap: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+                  <span style={{ color: '#64748b' }}>Sump tank level</span>
+                  <span
+                    style={{
+                      fontWeight: 800,
+                      textAlign: 'right',
+                      minWidth: 64,
+                      fontVariantNumeric: 'tabular-nums',
+                      fontFeatureSettings: '"tnum" 1, "lnum" 1'
+                    }}
+                  >
+                    {pct.toFixed(1)}%
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+                  <span style={{ color: '#64748b' }}>Sump capacity</span>
+                  <span
+                    style={{
+                      fontWeight: 800,
+                      textAlign: 'right',
+                      minWidth: 64,
+                      fontVariantNumeric: 'tabular-nums',
+                      fontFeatureSettings: '"tnum" 1, "lnum" 1'
+                    }}
+                  >
+                    100%
+                  </span>
                 </div>
               </div>
-
-              {/* Sliders work in demo (uncontrolled) mode */}
-              <div style={styles.meterLabel}>Inflow (when ON)</div>
-              <input
-                type="range" min="10" max="300" step="5"
-                value={isControlled ? flowInLpm : localFlowIn}
-                onChange={(e) => !isControlled && setLocalFlowIn(Number(e.target.value))}
-                style={{ width: '100%' }}
-                disabled={isControlled}
-              />
-              <div style={{ fontSize: 12, color: '#64748b' }}>
-                {isControlled ? flowInLpm : localFlowIn} L/min
-              </div>
-
-              <div style={{ ...styles.meterLabel, marginTop: 6 }}>Outflow (when OFF)</div>
-              <input
-                type="range" min="0" max="120" step="5"
-                value={isControlled ? outflowLpm : localOutflow}
-                onChange={(e) => !isControlled && setLocalOutflow(Number(e.target.value))}
-                style={{ width: '100%' }}
-                disabled={isControlled}
-              />
-              <div style={{ fontSize: 12, color: '#64748b' }}>
-                {isControlled ? outflowLpm : localOutflow} L/min
-              </div>
+              {/* ─────────────────────── */}
             </div>
           </div>
         </div>
