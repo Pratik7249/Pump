@@ -14,7 +14,7 @@ export default function TankFooter() {
       justifyContent: 'space-between'
     }}>
       <span>© {new Date().getFullYear()} Water Pump Demo</span>
-      <span> College Name </span>
+      <span> E-Bill Lab </span>
       <span>Status: <b style={{ color:'#0ea5e9' }}>Live</b></span>
     </footer>
   );

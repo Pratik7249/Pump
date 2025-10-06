@@ -49,7 +49,7 @@ export default function TankDiagram({
   const SAFE_TOP = 18;                                  // min clearance from viewBox top
   const pumpUp = {                                     // upward-facing outlet on pump top
     x: pump.x + Math.round(pump.w * 0.62) - 70 ,
-    y: pump.y + 10
+    y: pump.y + 55
   };
   const horizY = Math.max(topY - 16, vbY + SAFE_TOP + pipeW / 2);  // horizontal run (safe)
   // Inlet ring near the top-left corner (separate from manhole)
@@ -109,7 +109,7 @@ export default function TankDiagram({
       <g>
         <rect x={pump.x - 2} y={pump.y - 2} width={pump.w + 4} height={pump.h + 4} rx="10" fill="#fff" />
         {pumpImage ? (
-          <image href={pumpImage} x={pump.x} y={pump.y} width={pump.w} height={pump.h} preserveAspectRatio="xMidYMid meet" />
+          <image href={pumpImage} x={pump.x} y={pump.y+49} width={pump.w} height={pump.h} preserveAspectRatio="xMidYMid meet" />
         ) : (
           <rect x={pump.x} y={pump.y} width={pump.w} height={pump.h} rx="10" fill="url(#tankShell)" opacity="0.8" />
         )}
@@ -143,12 +143,41 @@ export default function TankDiagram({
 
       {/* Inside + water */}
       <g clipPath="url(#cavity)">
-        <rect x={innerLeft} y={topY - innerRy} width={innerRight - innerLeft} height={innerH + innerRy * 2} fill="url(#innerTint)" opacity="0.28" />
-        <rect x={innerLeft} y={waterTopY} width={innerRight - innerLeft} height={waterH} fill="url(#waterFill)" />
-        {waterH > 2 && (
-          <ellipse cx={tank.x + rx} cy={waterTopY} rx={innerRx - 4} ry={Math.max(6, innerRy - 4)} fill="rgba(255,255,255,0.6)" opacity="0.55" />
-        )}
-      </g>
+  {/* Inner cavity shading */}
+  <rect
+    x={innerLeft}
+    y={topY - innerRy}
+    width={innerRight - innerLeft}
+    height={innerH + innerRy * 2}
+    fill="url(#innerTint)"
+    opacity="0.25"
+  />
+
+  {/* Proper curved water shape */}
+  <path
+    d={`
+      M ${innerLeft} ${waterTopY}
+      A ${innerRx} ${innerRy} 0 0 1 ${innerRight} ${waterTopY}
+      L ${innerRight} ${botY}
+      A ${innerRx} ${innerRy} 0 0 1 ${innerLeft} ${botY}
+      Z
+    `}
+    fill="url(#waterFill)"
+  />
+
+  {/* Water surface reflection */}
+  {waterH > 2 && (
+    <ellipse
+      cx={tank.x + rx}
+      cy={waterTopY}
+      rx={innerRx - 4}
+      ry={Math.max(6, innerRy - 4)}
+      fill="rgba(255,255,255,0.55)"
+      opacity="0.6"
+    />
+  )}
+</g>
+
       <ellipse cx={tank.x + rx} cy={topY} rx={innerRx} ry={innerRy} fill="none" stroke={rimStroke} strokeWidth="1.5" opacity="0.7" />
       <ellipse cx={tank.x + rx} cy={botY} rx={innerRx} ry={innerRy} fill="none" stroke={rimStroke} strokeWidth="1.5" opacity="0.7" />
 

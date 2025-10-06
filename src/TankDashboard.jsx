@@ -1,9 +1,12 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import TankHeader from './components/TankHeader';
 import TankFooter from './components/TankFooter';
 import TankDiagram from './components/TankDiagram';
 import TankDetails from './components/TankDetails';
 import TankChart from './components/TankChart';
+import FullscreenIcon from '@mui/icons-material/Fullscreen';
+import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
+import { IconButton, Tooltip } from '@mui/material';
 
 export default function TankDashboard({
   capacity = 2000,
@@ -21,6 +24,24 @@ export default function TankDashboard({
   highLevelPct = 95,
   showThresholds = true
 }) {
+  const wrapperRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Handle Fullscreen toggle
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      wrapperRef.current?.requestFullscreen();
+    } else {
+      document.exitFullscreen?.();
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleChange);
+    return () => document.removeEventListener('fullscreenchange', handleChange);
+  }, []);
+
   const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 1100);
   useEffect(() => {
     const onResize = () => setIsNarrow(window.innerWidth < 1100);
@@ -66,12 +87,6 @@ export default function TankDashboard({
     return () => clearInterval(id);
   }, [isControlled, flowInLpm, outflowLpm, capacity]);
 
-  useEffect(() => {
-    const onKey = (e) => { if ((e.key || '').toLowerCase() === 'm') handleToggle(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
-
   const handleToggle = useCallback(() => {
     if (isControlled) {
       onToggle?.(!motorOn);
@@ -98,24 +113,39 @@ export default function TankDashboard({
 
   const styles = useMemo(() => ({
     wrapper: {
+      position: 'relative',
       height: '100%',
       width: '100%',
       display: 'grid',
-      gridTemplateRows: ` ${headerH}px minmax(0, 1fr) ${footerH}px`, // middle row never overflows
+      gridTemplateRows: `${headerH}px minmax(0, 1fr) ${footerH}px`,
       background: '#f8fafc',
       overflow: 'hidden'
+    },
+    // NEW: two-column header so actions (fullscreen) sit beside TankHeader's toggle
+    headerRow: {
+      display: 'grid',
+      gridTemplateColumns: '1fr auto',
+      alignItems: 'center',
+      height: '100%',
+      padding: '0 8px',
+      gap: 10
+    },
+    headerActions: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10, // <-- space between toggle (inside TankHeader) and fullscreen icon
     },
     main: {
       height: '100%',
       padding: pad,
       overflow: 'hidden',
-      boxSizing: 'border-box' // include padding in height to avoid pushing footer
+      boxSizing: 'border-box'
     },
     grid: {
       height: '100%',
       display: 'grid',
       gridTemplateColumns: isNarrow ? '1fr' : 'minmax(520px,1fr) 360px',
-      gridTemplateRows: isNarrow ? ` ${topRowH}px 1fr` : ` ${topRowH}px 1fr`,
+      gridTemplateRows: isNarrow ? `${topRowH}px 1fr` : `${topRowH}px 1fr`,
       gap
     },
     card: {
@@ -128,8 +158,18 @@ export default function TankDashboard({
   }), [isNarrow]);
 
   return (
-    <div style={styles.wrapper}>
-      <TankHeader onToggle={handleToggle} motorOn={!!curr.motorOn} />
+    <div ref={wrapperRef} style={styles.wrapper}>
+      {/* Header row with actions on the right */}
+      <div style={styles.headerRow}>
+        <TankHeader onToggle={handleToggle} motorOn={!!curr.motorOn} />
+        <div style={styles.headerActions}>
+          <Tooltip title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}>
+            <IconButton onClick={toggleFullscreen} size="small">
+              {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+            </IconButton>
+          </Tooltip>
+        </div>
+      </div>
 
       <div style={styles.main}>
         <div style={styles.grid}>
@@ -139,7 +179,7 @@ export default function TankDashboard({
               levelLiters={curr.level}
               motorOn={!!curr.motorOn}
               theme={theme}
-              pumpImage={'/pump.png'}
+              pumpImage={pumpImage}
             />
           </div>
 
@@ -150,7 +190,7 @@ export default function TankDashboard({
               capacity={capacity}
               lowLevelPct={lowLevelPct}
               highLevelPct={highLevelPct}
-              rssi={-58}
+              rssi={rssi}
               motorOn={curr.motorOn}
             />
           </div>
