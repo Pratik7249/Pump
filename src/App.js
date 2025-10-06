@@ -1,12 +1,10 @@
 import './App.css';
-import TankPumpPanel from './pump';
+import TankDashboard from './TankDashboard';
 
-function App() {
+export default function App() {
   return (
-    <div className="App">
-      <TankPumpPanel capacity={2000} height={800}/>
+    <div className="App" style={{ height: '100%' }}>
+      <TankDashboard />
     </div>
   );
 }
-
-export default App;

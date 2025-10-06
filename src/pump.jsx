@@ -170,7 +170,8 @@ export default function TankPumpPanel({
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'line' },
-        formatter: (params) => {
+        formatter: (rawParams) => {
+          const params = rawParams.filter(p => p.seriesName !== 'Current');
           const t = echarts.format.formatTime('hh:mm', params[0].value[0]);
           const parts = [`<div style="margin-bottom:4px;"><b>${t}</b></div>`];
           params.forEach(p => {
@@ -231,6 +232,7 @@ export default function TankPumpPanel({
           name: 'Current',
           type: 'effectScatter',
           symbolSize: 9,
+          tooltip:{show:false},
           rippleEffect: { brushType: 'stroke' },
           yAxisIndex: 0,
           data: levelData.length ? [levelData[levelData.length - 1]] : [],
@@ -303,7 +305,7 @@ export default function TankPumpPanel({
       borderRadius: 14,
       border: '1px solid #e5e7eb',
       background: '#fff',
-      overflow: 'hidden',
+      overflow: 'visible',
       display: 'flex'
     },
     meterCard: {
@@ -319,188 +321,199 @@ export default function TankPumpPanel({
 
   // ===== SVG Diagram (pipe *touches* tank, not overlapping) =====
   const Diagram = () => {
-  // Pump image box
+  // --- Pump box (kept same positions so you don't have to move anything else)
   const pump = { x: 70, y: 110, w: 220, h: 150 };
-
-  // Nozzle inside image (fractional)
-  const NOZZLE_XF = 0.14 // left/right
-  const NOZZLE_YF = 0.1; // top/down
-
+  const NOZZLE_XF = 0.14;
+  const NOZZLE_YF = 0.10;
   const outletTop = {
     x: pump.x + pump.w * NOZZLE_XF,
     y: pump.y + pump.h * NOZZLE_YF,
   };
-
-  // LED (top-right)
   const led = { r: 10, x: pump.x + pump.w - 30, y: pump.y + 14 };
 
+  // --- Pipe dimensions
   const pipeW = 18;
 
-  // Rectangular tank
-  const tank = { x: 740, y: 55, w: 265, h: 250 };
-  const inner = { x: tank.x + 6, y: tank.y + 6, w: tank.w - 12, h: tank.h - 12 };
+  // --- Cylindrical tank geometry
+  // Center/size
+  const tank = {
+    x: 760,           // left of cylinder
+    y: 70,            // top ellipse center Y
+    w: 280,           // cylinder width
+    h: 230,           // cylinder height (between top & bottom arcs)
+    ryTop: 24,        // top ellipse ry
+    ryBot: 28         // bottom ellipse ry (slightly bigger for 3D)
+  };
+  const cx = tank.x + tank.w / 2;
+  const x0 = tank.x;
+  const x1 = tank.x + tank.w;
+  const topY = tank.y;
+  const botY = tank.y + tank.h;
+  const rx  = tank.w / 2;
 
-  // Water level
-  const waterH = Math.max(0, Math.min(inner.h, (pct / 100) * inner.h));
-  const waterY = inner.y + (inner.h - waterH);
+  // Water level (uses your existing pct)
+  const innerPad = 6;                     // wall thickness
+  const innerTop = topY + 2;              // inner cavity top
+  const innerBot = botY - 2;
+  const waterH = (pct / 100) * (innerBot - innerTop);
+  const waterTopY = innerBot - waterH;
+  const waterRy   = Math.max(10, tank.ryTop * 0.85); // curved surface ry
 
-  // Straight pipe: vertical riser → horizontal → vertical down (touch tank)
-  const riserY = outletTop.y -70; // Adjust this value if needed
-  const tankGap = 11; // Increase to shorten the horizontal run near the tank
-  const touchX = tank.x - tankGap;
-  const startX = outletTop.x + 34; // aligns with outlet visually
-  const startY = outletTop.y-6;
-  const inletY = inner.y+3; // Ensure this is above the inner lip of the tank
+  // Path for the “inner cavity” (clip path for body & water)
+  // Moves from left of top ellipse → top arc → right wall → bottom arc → left wall
+  const innerPath = `
+    M ${x0} ${topY}
+    A ${rx} ${tank.ryTop} 0 0 1 ${x1} ${topY}
+    L ${x1} ${botY}
+    A ${rx} ${tank.ryBot} 0 0 1 ${x0} ${botY}
+    Z
+  `;
+
+  // Pipe path: vertical riser → long run → small elbow → stop at tank mouth
+  const riserY  = outletTop.y - 70;
+  const runEndX = tank.x - 18;       // stop slightly before the rim
+  const startX  = outletTop.x + 34;
+  const startY  = outletTop.y - 6;
 
   const pipePath = `
     M ${startX} ${startY}
     V ${riserY}
-    H ${touchX}
-    V ${inletY}
+    H ${runEndX}
   `;
 
   return (
     <svg
       width="100%"
       height="100%"
-      viewBox="0 0 1000 360"
+      viewBox="0 0 1200 420"
       preserveAspectRatio="xMidYMid meet"
       style={{ display: 'block' }}
     >
       <defs>
+        {/* metals / water */}
         <linearGradient id="steel" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#cbd5e1" />
-          <stop offset="100%" stopColor="#94a3b8" />
+          <stop offset="0%" stopColor="#cdd6e0" />
+          <stop offset="100%" stopColor="#9aa7b6" />
         </linearGradient>
-        <linearGradient id="water" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#60a5fa" />
+        <linearGradient id="tankBody" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#eef3f8" />
+          <stop offset="55%" stopColor="#e7edf4" />
+          <stop offset="100%" stopColor="#dfe6ee" />
+        </linearGradient>
+        <linearGradient id="waterFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#6fb6ff" />
           <stop offset="100%" stopColor="#3b82f6" />
         </linearGradient>
-        <style>{`@keyframes dashflow { to { stroke-dashoffset: -220; } }`}</style>
-        <clipPath id="pumpClip">
-          <rect x={pump.x} y={pump.y} width={pump.w} height={pump.h} rx="14" ry="14" />
+        <radialGradient id="waterHighlight" cx="30%" cy="30%" r="70%">
+          <stop offset="0%" stopColor="rgba(255,255,255,0.55)" />
+          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+        </radialGradient>
+
+        {/* clip path for the cylinder interior */}
+        <clipPath id="tankInnerClip">
+          <path d={innerPath} />
         </clipPath>
-        <clipPath id="tankClip">
-          <rect x={inner.x} y={inner.y} width={inner.w} height={inner.h} rx="6" ry="6" />
-        </clipPath>
+
+        {/* subtle shadow under the tank */}
+        <filter id="softShadow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="6" result="blur" />
+          <feOffset dx="0" dy="2" result="offset" />
+          <feComponentTransfer>
+            <feFuncA type="linear" slope="0.35" />
+          </feComponentTransfer>
+          <feMerge>
+            <feMergeNode in="offset" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
       </defs>
 
-      {/* PUMP first */}
+      {/* PUMP block (image stays the same) */}
       <rect x={pump.x} y={pump.y} width={pump.w} height={pump.h} rx="14" fill="#fff" />
-      {pumpImage ? (
-        <image
-          href={pumpImage}
-          x={pump.x}
-          y={pump.y}
-          width={pump.w}
-          height={pump.h}
-          preserveAspectRatio="xMidYMid meet"
-          clipPath="url(#pumpClip)"
-        />
-      ) : (
-        <rect x={pump.x} y={pump.y} width={pump.w} height={pump.h} rx="14" fill="url(#steel)" opacity="0.7" />
-      )}
+      <image
+        href={pumpImage}
+        x={pump.x}
+        y={pump.y}
+        width={pump.w}
+        height={pump.h}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ pointerEvents: 'none' }}
+      />
 
-      {/* PIPE (touching tank) */}
+      {/* PIPE to tank mouth */}
       <path
         d={pipePath}
         fill="none"
         stroke="#94a3b8"
-        strokeOpacity="0.65"
+        strokeOpacity="0.68"
         strokeWidth={pipeW}
-        strokeLinecap="miter"
-        strokeLinejoin="miter"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        filter="url(#softShadow)"
       />
-      {curr.motorOn && (
-        <path
-          d={pipePath}
-          fill="none"
-          stroke="#60a5fa"
-          strokeWidth={Math.max(8, pipeW - 10)}
-          strokeLinecap="miter"
-          strokeLinejoin="miter"
-          style={{ strokeDasharray: '26 18', animation: 'dashflow 1.1s linear infinite' }}
-        />
-      )}
+      {/* coupling near the mouth */}
+      <circle cx={runEndX + 14} cy={riserY} r={pipeW * 0.9} fill="#b3becb" opacity="0.8" />
+      <circle cx={runEndX + 14} cy={riserY} r={pipeW * 0.55} fill="#e5ebf2" />
 
-      {/* TANK */}
-      <rect x={tank.x} y={tank.y} width={tank.w} height={tank.h} rx="6" fill="url(#steel)" opacity="0.35" />
-      <rect x={inner.x} y={inner.y} width={inner.w} height={inner.h} rx="6" fill="#f1f5f9" stroke="#e2e8f0" />
+      {/* ======== CYLINDRICAL TANK ======== */}
+      {/* Base shadow */}
+      <ellipse cx={cx} cy={botY + tank.ryBot + 12} rx={rx * 0.9} ry={tank.ryBot * 0.55} fill="#cbd5e1" opacity="0.45" />
 
-      {/* Water + surface line */}
-      <g clipPath="url(#tankClip)">
-        <rect x={inner.x} y={waterY} width={inner.w} height={waterH} fill="url(#water)" />
-        {waterH > 6 && (
-          <path d={`M ${inner.x + 10} ${waterY + 6} H ${inner.x + inner.w - 10}`} stroke="rgba(255,255,255,0.9)" strokeWidth="2" />
-        )}
+      {/* Outer shell (stroke = rim) */}
+      <path d={innerPath} fill="url(#tankBody)" stroke="#b8c4d3" strokeWidth="3" />
+
+      {/* Inner cavity contents (clipped) */}
+      <g clipPath="url(#tankInnerClip)">
+        {/* glass shading along sides */}
+        <rect x={x0} y={topY} width={tank.w} height={tank.h} fill="url(#tankBody)" />
+        {/* water column */}
+        <rect x={x0} y={waterTopY} width={tank.w} height={innerBot - waterTopY} fill="url(#waterFill)" />
+        {/* glossy highlight blob */}
+        <ellipse cx={cx - rx * 0.28} cy={waterTopY + 24} rx={rx * 0.22} ry={waterRy * 0.55} fill="url(#waterHighlight)" />
+        {/* water surface ellipse */}
+        <ellipse cx={cx} cy={waterTopY} rx={rx * 0.98} ry={waterRy} fill="rgba(255,255,255,0.35)" />
+        <ellipse cx={cx} cy={waterTopY} rx={rx * 0.98} ry={waterRy} fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="1.5" />
+        {/* a few soft rings for the “ribbed” look */}
+        {[0.2, 0.45, 0.7, 0.9].map((f, i) => (
+          <ellipse
+            key={i}
+            cx={cx}
+            cy={topY + tank.h * f}
+            rx={rx * 0.98}
+            ry={tank.ryTop * (0.85 + 0.15 * Math.sin(i))}
+            fill="none"
+            stroke="#aab6c4"
+            strokeOpacity="0.25"
+            strokeWidth="3"
+          />
+        ))}
       </g>
 
-      {/* Ruler ticks + 0/50/100 labels */}
-      <g>
-        {Array.from({ length: 11 }).map((_, i) => {
-          const y = inner.y + inner.h - (inner.h * (i / 10));
-          const len = i % 5 === 0 ? 10 : 6;
-          const op = i % 5 === 0 ? 0.35 : 0.22;
-          return (
-            <line
-              key={i}
-              x1={tank.x + tank.w - 3}
-              y1={y}
-              x2={tank.x + tank.w - 3 + len}
-              y2={y}
-              stroke="#64748b"
-              strokeOpacity={op}
-              strokeWidth="1"
-            />
-          );
-        })}
-        <text x={tank.x + tank.w + 14} y={inner.y + inner.h + 4} fontSize="10" fill="#64748b">0%</text>
-        <text x={tank.x + tank.w + 14} y={inner.y + inner.h / 2 + 3} fontSize="10" fill="#64748b">50%</text>
-        <text x={tank.x + tank.w + 14} y={inner.y + 4} fontSize="10" fill="#64748b">100%</text>
-      </g>
+      {/* Top rim & mouth (drawn AFTER contents for correct layering) */}
+      <ellipse cx={cx} cy={topY} rx={rx} ry={tank.ryTop} fill="rgba(0,0,0,0.06)" />
+      <ellipse cx={cx} cy={topY} rx={rx} ry={tank.ryTop} fill="none" stroke="#9fb0c3" strokeWidth="3" />
 
-      {/* Floating % near water surface */}
-      <text
-        x={inner.x + inner.w - 8}
-        y={Math.max(inner.y + 14, waterY - 6)}
-        textAnchor="end"
-        fontSize="11"
-        fill="#475569"
-        opacity="0.9"
-        style={{ fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1, "lnum" 1' }}
-      >
-      </text>
+      {/* Cap on the mouth */}
+      <ellipse cx={cx} cy={topY - tank.ryTop - 6} rx={rx * 0.42} ry={tank.ryTop * 0.55} fill="#e7edf4" stroke="#b8c4d3" />
+      <ellipse cx={cx} cy={topY - tank.ryTop - 12} rx={rx * 0.12} ry={tank.ryTop * 0.24} fill="#cfd9e4" stroke="#aeb9c7" />
 
-      <text x={tank.x + tank.w / 2} y={tank.y + tank.h + 22} textAnchor="middle" fontSize="13" fill="#64748b">
-        Water Tank
-      </text>
-
-      {/* LED last */}
-      <circle
-        cx={led.x}
-        cy={led.y}
-        r={led.r}
-        fill={curr.motorOn ? '#16a34a' : '#ef4444'}
-        stroke="#ffffff"
-        strokeWidth="2"
-      />
+      {/* LED */}
+      <circle cx={led.x} cy={led.y} r={led.r} fill={curr.motorOn ? '#16a34a' : '#ef4444'} stroke="#ffffff" strokeWidth="2" />
       {curr.motorOn && (
-        <circle
-          cx={led.x}
-          cy={led.y}
-          r={led.r + 6}
-          fill="none"
-          stroke="#16a34a"
-          strokeOpacity="0.45"
-          strokeWidth="3"
-        >
+        <circle cx={led.x} cy={led.y} r={led.r + 6} fill="none" stroke="#16a34a" strokeOpacity="0.45" strokeWidth="3">
           <animate attributeName="r" values={`${led.r + 3};${led.r + 8};${led.r + 3}`} dur="1.4s" repeatCount="indefinite" />
           <animate attributeName="stroke-opacity" values="0.55;0.15;0.55" dur="1.4s" repeatCount="indefinite" />
         </circle>
       )}
+
+      {/* Label */}
+      <text x={cx} y={botY + tank.ryBot + 32} textAnchor="middle" fontSize="13" fill="#64748b">
+        Water Tank
+      </text>
     </svg>
   );
 };
+
   return (
     <div style={styles.wrapper}>
       <div style={styles.top}>
@@ -568,17 +581,13 @@ export default function TankPumpPanel({
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
                   <span style={{ color: '#64748b' }}>Sump capacity</span>
-                  <span
-                    style={{
-                      fontWeight: 800,
-                      textAlign: 'right',
-                      minWidth: 64,
-                      fontVariantNumeric: 'tabular-nums',
-                      fontFeatureSettings: '"tnum" 1, "lnum" 1'
-                    }}
-                  >
-                    100%
-                  </span>
+<span
+  style={{ fontWeight: 800, textAlign: 'right', minWidth: 64,
+           fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1, "lnum" 1' }}
+>
+  {capacity.toLocaleString()} L
+</span>
+
                 </div>
               </div>
               {/* ─────────────────────── */}
