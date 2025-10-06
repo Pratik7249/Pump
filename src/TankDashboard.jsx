@@ -151,6 +151,7 @@ export default function TankDashboard({
               lowLevelPct={lowLevelPct}
               highLevelPct={highLevelPct}
               rssi={-58}
+              motorOn={curr.motorOn}
             />
           </div>
 

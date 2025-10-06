@@ -15,6 +15,7 @@ function rssiColor(rssi) {
   if (rssi >= -90) return '#f59e0b';
   return '#ef4444';
 }
+
 function SignalBars({ rssi }) {
   const bars = rssiToBars(rssi);
   const color = rssiColor(rssi);
@@ -22,9 +23,12 @@ function SignalBars({ rssi }) {
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3 }}>
       {heights.map((h, i) => (
-        <div key={i}
+        <div
+          key={i}
           style={{
-            width: 6, height: h, borderRadius: 2,
+            width: 6,
+            height: h,
+            borderRadius: 2,
             background: i < bars ? color : '#e5e7eb',
             boxShadow: i < bars ? '0 1px 4px rgba(0,0,0,0.12)' : 'none'
           }}
@@ -39,21 +43,72 @@ function Row({ label, value }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
       <span style={{ color: '#64748b' }}>{label}</span>
-      <span style={{
-        fontWeight: 800, textAlign: 'right', minWidth: 64,
-        fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum" 1, "lnum" 1'
-      }}>
+      <span
+        style={{
+          fontWeight: 800,
+          textAlign: 'right',
+          minWidth: 64,
+          fontVariantNumeric: 'tabular-nums',
+          fontFeatureSettings: '"tnum" 1, "lnum" 1'
+        }}
+      >
         {value}
       </span>
     </div>
   );
 }
 
-export default function TankDetails({ pct, litersText, capacity, lowLevelPct, highLevelPct, rssi }) {
-  const flags = useMemo(() => ({
-    low: pct <= lowLevelPct,
-    high: pct >= highLevelPct
-  }), [pct, lowLevelPct, highLevelPct]);
+function MotorStatus({ on }) {
+  const styles = on
+    ? {
+        bg: 'rgba(34,197,94,0.12)',
+        border: '1px solid rgba(34,197,94,0.35)',
+        dot: '#16a34a',
+        text: '#065f46',
+        label: 'ON'
+      }
+    : {
+        bg: 'rgba(239,68,68,0.12)',
+        border: '1px solid rgba(239,68,68,0.35)',
+        dot: '#ef4444',
+        text: '#7f1d1d',
+        label: 'OFF'
+      };
+
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '4px 8px',
+        borderRadius: 999,
+        background: styles.bg,
+        border: styles.border
+      }}
+    >
+      <span style={{ width: 8, height: 8, borderRadius: '50%', background: styles.dot }} />
+      <span style={{ fontWeight: 800, color: styles.text }}>{styles.label}</span>
+    </span>
+  );
+}
+
+export default function TankDetails({
+  pct,
+  litersText,
+  capacity,
+  lowLevelPct,
+  highLevelPct,
+  rssi,
+  motorOn // <-- NEW
+}) {
+  const flags = useMemo(
+    () => ({
+      low: pct <= lowLevelPct,
+      high: pct >= highLevelPct
+    }),
+    [pct, lowLevelPct, highLevelPct]
+  );
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -64,24 +119,39 @@ export default function TankDetails({ pct, litersText, capacity, lowLevelPct, hi
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
         {flags.low && (
-          <span style={{
-            fontSize: 12, fontWeight: 700, padding: '4px 8px', borderRadius: 999,
-            background: 'rgba(239,68,68,0.12)', color: '#991b1b',
-            border: '1px solid rgba(239,68,68,0.35)'
-          }}>LOW LEVEL</span>
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              padding: '4px 8px',
+              borderRadius: 999,
+              background: 'rgba(239,68,68,0.12)',
+              color: '#991b1b',
+              border: '1px solid rgba(239,68,68,0.35)'
+            }}
+          >
+            LOW LEVEL
+          </span>
         )}
         {flags.high && (
-          <span style={{
-            fontSize: 12, fontWeight: 700, padding: '4px 8px', borderRadius: 999,
-            background: 'rgba(34,197,94,0.12)', color: '#065f46',
-            border: '1px solid rgba(34,197,94,0.35)'
-          }}>NEAR FULL</span>
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              padding: '4px 8px',
+              borderRadius: 999,
+              background: 'rgba(34,197,94,0.12)',
+              color: '#065f46',
+              border: '1px solid rgba(34,197,94,0.35)'
+            }}
+          >
+            NEAR FULL
+          </span>
         )}
       </div>
 
-      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8, marginBottom: 2 }}></div>
       <div style={{ display: 'grid', rowGap: 8 }}>
-        <Row label="Motor Status" value={``}/>
+        <Row label="Motor status" value={<MotorStatus on={!!motorOn} />} />
         <Row label="Sump tank level" value={`${pct.toFixed(1)}%`} />
         <Row label="Sump capacity" value={`${capacity.toLocaleString()} L`} />
         <Row

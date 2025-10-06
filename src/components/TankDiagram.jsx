@@ -1,12 +1,5 @@
 import React, { useMemo } from 'react';
 
-/**
- * Terrace cylinder with stand + 90° piping and proper entries
- * - 90° bends (no curved elbow near pump)
- * - Pipe connects to an upward-facing outlet on the pump
- * - Clean central manhole cover + separate corner inlet on top
- * - Label moved below stand
- */
 export default function TankDiagram({
   capacity,
   levelLiters,
