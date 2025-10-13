@@ -9,7 +9,7 @@ export default function TankDiagram({
   viewBox = '0 0 1000 360'
 }) {
   const pct = useMemo(() => (capacity ? Math.max(0, Math.min(100, (levelLiters / capacity) * 100)) : 0), [capacity, levelLiters]);
-  const [vbX, vbY, vbW, vbH] = useMemo(() => viewBox.split(' ').map(Number), [viewBox]);
+  const [ vbY] = useMemo(() => viewBox.split(' ').map(Number), [viewBox]);
 
   // Layout
   const pump = { x: 60, y: 120, w: 220, h: 150 };
